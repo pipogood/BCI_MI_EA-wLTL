@@ -28,6 +28,8 @@ class BCIFuntions:
         montage = make_standard_montage("standard_1005")
         raw_gdf.set_montage(montage)
 
+        print(f"Successful to create Data of {name}")
+
         return raw_gdf
     
     def GetEpoch(self, raw_gdf, tmin=-2.0, tmax=6.0, baseline = (-0.5,0.0), event_repeat = True):
