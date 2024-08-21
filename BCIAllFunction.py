@@ -6,7 +6,7 @@ from os import listdir
 from mne.channels import make_standard_montage
 from scipy import signal
 from scipy.linalg import sqrtm, inv 
-from sklearn.model_selection import train_test_split
+from sklearn.model_selection import train_test_split, GridSearchCV, KFold
 from sklearn.utils import shuffle
 from mne.decoding import CSP
 from sklearn.svm import SVC
@@ -88,6 +88,9 @@ class BCIFuntions:
             train_data = EEG_epoch[key_subs]['Raw_Epoch'].get_data()
             labels = EEG_epoch[key_subs]["Raw_Epoch"].copy().events[:,-1]
 
+            mapping = {2: 0, 3: 1, 4: 2, 5: 3}
+            labels = np.vectorize(mapping.get)(labels)
+
             outlier_trial = []
             for ii in range(0,train_data.shape[0]):
                 if train_data[ii].max() > trial_removal_th or train_data[ii].min() < -trial_removal_th:
@@ -113,70 +116,102 @@ class BCIFuntions:
         return y
     
 
-    def GetRawSet_ComputeEA(self, Epochs_data):
+    def GetRawSet_ComputeEA(self, Epochs_data, target_subject = 'pipo', calibrate_size = 0.2):
         '''
         Note: EEG labels 
-        class 2 is Left hand imagery
-        class 3 is Right hand imagery
-        class 5 is Feet imagery
-        class 4 is Non-imagery
+        class 0 is Left hand imagery
+        class 1 is Right hand imagery
+        class 3 is Feet imagery
+        class 2 is Non-imagery
 
         For motor imagery, we will crop data at 0-4 second after direction cue represent and filter 6-32 Hz
 
         This function will return raw_EEG and EA_EEG
         '''
+        label_target = Epochs_data[target_subject]["label"]
+
+        if calibrate_size != 0:
+            x_train, x_test, y_train, y_test = train_test_split(Epochs_data[target_subject]['Raw_Epoch'], label_target, test_size=calibrate_size, random_state = 42, stratify=label_target)
+            
+            tgt_test = str(target_subject) + "_test"
+            Epochs_data[tgt_test] = {"Raw_Epoch": x_train}
+            Epochs_data[tgt_test]['label'] = y_train
+
+            Epochs_data[target_subject]["label"] = y_test
+            Epochs_data[target_subject]["Raw_Epoch"] = x_test
+
+        else:
+            tgt_test = target_subject
+            Epochs_data[target_subject]['EA_Epoch'] = Epochs_data[target_subject]['Raw_Epoch']
 
         for key_subs in Epochs_data:
+            if key_subs != tgt_test:
 
-            label = Epochs_data[key_subs]["label"]
+                label = Epochs_data[key_subs]["label"]
+                Epochs_data[key_subs]["Raw_left"] = Epochs_data[key_subs]["Raw_Epoch"][np.where(label == 0)]
+                Epochs_data[key_subs]["Raw_right"] = Epochs_data[key_subs]["Raw_Epoch"][np.where(label == 1)]
+                Epochs_data[key_subs]["Raw_non"] = Epochs_data[key_subs]["Raw_Epoch"][np.where(label == 2)]
+                Epochs_data[key_subs]["Raw_feet"] = Epochs_data[key_subs]["Raw_Epoch"][np.where(label == 3)]
+                # Calculate reference matrix
+                RefEA = 0
+                # Iterate over all trials, compute reference EA
+                for trial in Epochs_data[key_subs]["Raw_Epoch"]:
+                    cov = np.cov(trial)
+                    RefEA += cov
+                # Average over all trials
+                RefEA = RefEA/Epochs_data[key_subs]["Raw_Epoch"].shape[0]
 
-            Epochs_data[key_subs]["Raw_left"] = Epochs_data[key_subs]["Raw_Epoch"][np.where(label == 2)]
-            Epochs_data[key_subs]["Raw_right"] = Epochs_data[key_subs]["Raw_Epoch"][np.where(label == 3)]
-            Epochs_data[key_subs]["Raw_non"] = Epochs_data[key_subs]["Raw_Epoch"][np.where(label == 4)]
-            Epochs_data[key_subs]["Raw_feet"] = Epochs_data[key_subs]["Raw_Epoch"][np.where(label == 5)]
+                EA_left = []
+                EA_right = []
+                EA_feet = []
+                EA_non = []
+                # Compute R^(-0.5)
+                R_inv = sqrtm(inv(RefEA))
+                
+                for left, right, feet, non in zip(Epochs_data[key_subs]["Raw_left"] , Epochs_data[key_subs]["Raw_right"] , Epochs_data[key_subs]["Raw_feet"] , Epochs_data[key_subs]["Raw_non"] ):
+                    EA_left.append(R_inv@left)
+                    EA_right.append(R_inv@right)
+                    EA_feet.append(R_inv@feet)
+                    EA_non.append(R_inv@non)
+                # Store as left_EA and right_EA
+                Epochs_data[key_subs]['EA_left'] = np.array(EA_left)
+                Epochs_data[key_subs]['EA_right'] = np.array(EA_right)
+                Epochs_data[key_subs]['EA_feet'] = np.array(EA_feet)
+                Epochs_data[key_subs]['EA_non'] = np.array(EA_non)
+                EA_data = []
+                for trial in Epochs_data[key_subs]["Raw_Epoch"]:
+                    EA_data.append(R_inv@trial)
 
-            # Calculate reference matrix
-            RefEA = 0
+                Epochs_data[key_subs]['EA_Epoch'] = np.array(EA_data)
 
-            # Iterate over all trials, compute reference EA
-            for trial in Epochs_data[key_subs]["Raw_Epoch"]:
-                cov = np.cov(trial)
-                RefEA += cov
+                if (key_subs == target_subject) and calibrate_size != 0: #Apply RefEA to target_test data
+                    label = Epochs_data[tgt_test]["label"]
+                    Epochs_data[tgt_test]["Raw_left"] = Epochs_data[tgt_test]["Raw_Epoch"][np.where(label == 0)]
+                    Epochs_data[tgt_test]["Raw_right"] = Epochs_data[tgt_test]["Raw_Epoch"][np.where(label == 1)]
+                    Epochs_data[tgt_test]["Raw_non"] = Epochs_data[tgt_test]["Raw_Epoch"][np.where(label == 2)]
+                    Epochs_data[tgt_test]["Raw_feet"] = Epochs_data[tgt_test]["Raw_Epoch"][np.where(label == 3)]
+                    EA_left = []
+                    EA_right = []
+                    EA_feet = []
+                    EA_non = []
+                    # Compute R^(-0.5)
+                    R_inv = sqrtm(inv(RefEA))
+                    for left, right, feet, non in zip(Epochs_data[tgt_test]["Raw_left"] , Epochs_data[tgt_test]["Raw_right"] , Epochs_data[tgt_test]["Raw_feet"] , Epochs_data[tgt_test]["Raw_non"] ):
+                        EA_left.append(R_inv@left)
+                        EA_right.append(R_inv@right)
+                        EA_feet.append(R_inv@feet)
+                        EA_non.append(R_inv@non)
+                    # Store as left_EA and right_EA
+                    Epochs_data[tgt_test]['EA_left'] = np.array(EA_left)
+                    Epochs_data[tgt_test]['EA_right'] = np.array(EA_right)
+                    Epochs_data[tgt_test]['EA_feet'] = np.array(EA_feet)
+                    Epochs_data[tgt_test]['EA_non'] = np.array(EA_non)
+                    EA_data = []
+                    for trial in Epochs_data[tgt_test]["Raw_Epoch"]:
+                        EA_data.append(R_inv@trial)
+                    Epochs_data[tgt_test]['EA_Epoch'] = np.array(EA_data)
 
-            # Average over all trials
-            RefEA = RefEA/Epochs_data[key_subs]["Raw_Epoch"].shape[0]
-
-            # Add to data
-            Epochs_data[key_subs]['RefEA'] = RefEA 
-
-            EA_left = []
-            EA_right = []
-            EA_feet = []
-            EA_non = []
-
-            # Compute R^(-0.5)
-            R_inv = sqrtm(inv(RefEA))
-
-            for left, right, feet, non in zip(Epochs_data[key_subs]["Raw_left"] , Epochs_data[key_subs]["Raw_right"] , Epochs_data[key_subs]["Raw_feet"] , Epochs_data[key_subs]["Raw_non"] ):
-                EA_left.append(R_inv@left)
-                EA_right.append(R_inv@right)
-                EA_feet.append(R_inv@feet)
-                EA_non.append(R_inv@non)
-
-            # Store as left_EA and right_EA
-            Epochs_data[key_subs]['EA_left'] = np.array(EA_left)
-            Epochs_data[key_subs]['EA_right'] = np.array(EA_right)
-            Epochs_data[key_subs]['EA_feet'] = np.array(EA_feet)
-            Epochs_data[key_subs]['EA_non'] = np.array(EA_non)
-
-            EA_data = []
-
-            for trial in Epochs_data[key_subs]["Raw_Epoch"]:
-                EA_data.append(R_inv@trial)
-
-            Epochs_data[key_subs]['EA_Epoch'] = np.array(EA_data)
-        
-
+                    
     def plot_rawEA(self, Epochs_data, no_trial = 0, target_subject = "pipo"):
         '''
         This function will plot time series data compare between EA and non-EA 
@@ -229,26 +264,69 @@ class BCIFuntions:
         plt.show()
 
 
-    def computeCSPFeatures(self, data, csp_transform = 'average_power'):
+    def computeCSPFeatures(self, data, target_subject = "voen"):
 
-        CSP_Epoch = {}
+        train_data = None
+        train_label = None
 
-        for key_sub in data:
+        CSP_Epoch = {} 
+        for sub in data.keys():
+            CSP_Epoch[sub] = {}
 
-            CSP_Epoch[key_sub] = {}
+        conditions = ["noEA", "EA"]
 
-            label = data[key_sub]['label']
-            csp = CSP(n_components= len(self.picks), reg=None, log=None, rank= 'info', transform_into = csp_transform)
+        for condition in conditions:
+            if condition == "noEA":
+                query = "Raw_Epoch"
+            else:
+                query = "EA_Epoch"
 
-            train_data_raw, label_raw = shuffle(data[key_sub]['Raw_Epoch'], label, random_state = 0)
-            train_data_EA, label_EA = shuffle(data[key_sub]['EA_Epoch'], label, random_state = 0)
+            for sub in data.keys():
+                if sub != target_subject:
+                    if train_data is None:
+                        train_data = data[sub][query]
+                    else:
+                        train_data = np.concatenate((train_data, data[sub][query]), axis=0)
+
+                    if train_label is None:
+                        train_label = data[sub]['label']
+                    else:
+                        train_label = np.concatenate((train_label, data[sub]['label']), axis=0)
+
+            
+            csp = CSP(n_components = len(self.picks), reg=None, log=None, rank= 'info')
+
+            train_data, train_label = shuffle(train_data, train_label, random_state = 0)
+            csp.fit(train_data, train_label)      
+            
+            for key_sub in data:
+                if condition == "noEA":
+                    CSP_Epoch[key_sub]['Raw_csp'] = csp.transform(data[key_sub]['Raw_Epoch'])
+                    CSP_Epoch[key_sub]['Raw_csp_label'] = data[key_sub]['label']
+                else:
+                    CSP_Epoch[key_sub]['EA_csp'] = csp.transform(data[key_sub]['EA_Epoch'])
+                    CSP_Epoch[key_sub]['EA_csp_label'] = data[key_sub]['label']
+
+
+        # CSP_Epoch = {}
+
+        # for key_sub in data:
+
+        #     CSP_Epoch[key_sub] = {}
+
+        #     label = data[key_sub]['label']
+        #     csp = CSP(n_components= len(self.picks), reg=None, log=None, rank= 'info', transform_into = csp_transform)
+
+        #     train_data_raw, label_raw = shuffle(data[key_sub]['Raw_Epoch'], label, random_state = 0)
+        #     train_data_EA, label_EA = shuffle(data[key_sub]['EA_Epoch'], label, random_state = 0)
                         
-            csp.fit(train_data_raw, label_raw)
-            CSP_Epoch[key_sub]['Raw_csp'] = csp.transform(train_data_raw)
+        #     csp.fit(train_data_raw, label_raw)
+        #     CSP_Epoch[key_sub]['Raw_csp'] = csp.transform(train_data_raw)
+        #     CSP_Epoch[key_sub]['Raw_csp_label'] = label_raw
 
-            csp.fit(train_data_EA, label_EA)
-            CSP_Epoch[key_sub]['EA_csp'] = csp.transform(train_data_EA)
-
+        #     csp.fit(train_data_EA, label_EA)
+        #     CSP_Epoch[key_sub]['EA_csp'] = csp.transform(train_data_EA)
+        #     CSP_Epoch[key_sub]['EA_csp_label'] = label_EA
 
         return CSP_Epoch
 
@@ -257,8 +335,8 @@ class BCIFuntions:
         # Perform sne on all subject
         for key_subs in CSP_Epoch:
             print('Processing' , key_subs)
-            CSP_Epoch[key_subs]['sne'] = TSNE(n_iter=5000).fit_transform(CSP_Epoch[key_subs]['Raw_csp'])
-            CSP_Epoch[key_subs]['sne_EA'] = TSNE(n_iter=5000).fit_transform(CSP_Epoch[key_subs]['EA_csp'])
+            CSP_Epoch[key_subs]['sne'] = TSNE(perplexity= 10,n_iter=5000).fit_transform(CSP_Epoch[key_subs]['Raw_csp'])
+            CSP_Epoch[key_subs]['sne_EA'] = TSNE(perplexity= 10,n_iter=5000).fit_transform(CSP_Epoch[key_subs]['EA_csp'])
 
 
         palette = np.array(sns.color_palette(n_colors=11))
@@ -384,7 +462,7 @@ class BCIFuntions:
                     train_label = np.concatenate((train_label, data[sub]['label']), axis=0)
 
         
-        csp = CSP(n_components = 5 , reg=None, log=None, rank= 'info')
+        csp = CSP(n_components = len(self.picks) , reg=None, log=None, rank= 'info')
 
         train_data, train_label = shuffle(train_data, train_label, random_state = 0)
         test_data, test_label = shuffle(test_data, test_label, random_state = 0)
@@ -394,11 +472,22 @@ class BCIFuntions:
         X_train = csp.transform(train_data)
         X_test  = csp.transform(test_data)
 
-        svm =  SVC()
-        score = cross_val_score(svm, X_train, train_label, cv= 10)
-        print("LDA only Cross-validation scores:", np.mean(score))
-        svm.fit(X_train, train_label)
-        self.GetConfusionMatrix(svm, X_train, X_test, train_label, test_label)
+        param_grid = {
+            'C':  [0.01, 0.1, 1, 10, 100, 1000],
+            'kernel': ['linear', 'rbf', 'poly']
+        }
+        
+        svm =  SVC(random_state=42)
+        cv_splitter = KFold(n_splits=10, shuffle=True, random_state=42)
+        tuned_clf = GridSearchCV(estimator=svm, param_grid=param_grid,
+                         scoring='accuracy', refit='accuracy', cv=cv_splitter)
+        
+        tuned_clf.fit(X_train, train_label)
+
+        print(f"Best parameters: {tuned_clf.best_params_}")
+        print(f"Best cross-validation score: {tuned_clf.best_score_:.3f}")
+
+        self.GetConfusionMatrix(tuned_clf, X_train, X_test, train_label, test_label)
 
 
     def GetConfusionMatrix(self, models, X_train, X_test, y_train, y_test):
