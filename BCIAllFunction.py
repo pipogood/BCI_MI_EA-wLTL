@@ -55,7 +55,7 @@ class BCIFuntions:
 
         return EEG_data
     
-    def GetEpoch(self, EEG_data, tmin=-2.0, tmax=6.0, crop=(0,4),baseline = (-0.5,0.0), trial_removal_th = 100):
+    def GetEpoch(self, EEG_data, tmin=-2.0, tmax=6.0, crop=(0,2),baseline = (-0.5,0.0), trial_removal_th = 100):
 
         EEG_epoch = {}
 
@@ -101,6 +101,10 @@ class BCIFuntions:
             EEG_epoch[key_subs]['Raw_Epoch'] = np.delete(train_data, outlier_trial, axis = 0)
             EEG_epoch[key_subs]['label'] = np.delete(labels, outlier_trial)
 
+            #apply filter
+            filtered_data = self.butter_bandpass_filter(EEG_epoch[key_subs]['Raw_Epoch'], lowcut= 6, highcut= 32)
+            EEG_epoch[key_subs]['Raw_Epoch'] = filtered_data
+
         return EEG_epoch
 
     def butter_bandpass(self,lowcut,highcut,fs,order):
@@ -110,7 +114,7 @@ class BCIFuntions:
         b,a = signal.butter(order,[low,high],'bandpass')
         return b,a
 
-    def butter_bandpass_filter(self,data,lowcut = 6,highcut = 30, order = 4):
+    def butter_bandpass_filter(self,data,lowcut = 6,highcut = 30, order = 8):
         b,a = self.butter_bandpass(lowcut,highcut,self.fs,order)
         y = signal.filtfilt(b,a,data,axis=2)
         return y
