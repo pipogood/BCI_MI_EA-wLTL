@@ -15,6 +15,10 @@ import seaborn as sns
 from sklearn.discriminant_analysis import LinearDiscriminantAnalysis
 from sklearn.model_selection import ShuffleSplit,StratifiedKFold ,cross_val_score, cross_val_predict, KFold
 from sklearn.metrics import classification_report,confusion_matrix
+from sklearn.neighbors import KNeighborsClassifier
+from pyriemann.utils.distance import distance_riemann
+from scipy.linalg import logm, expm
+
 
 class BCIFuntions:
     def __init__(self, numclass, frequency, ch_pick):
@@ -114,7 +118,7 @@ class BCIFuntions:
         b,a = signal.butter(order,[low,high],'bandpass')
         return b,a
 
-    def butter_bandpass_filter(self,data,lowcut = 6,highcut = 30, order = 8):
+    def butter_bandpass_filter(self,data,lowcut = 6,highcut = 30, order = 4):
         b,a = self.butter_bandpass(lowcut,highcut,self.fs,order)
         y = signal.filtfilt(b,a,data,axis=2)
         return y
@@ -267,8 +271,171 @@ class BCIFuntions:
 
         plt.show()
 
+    def k_medoids_clustering_train(self, cov_matrices, k, label):
+        distances = np.zeros((len(cov_matrices), len(cov_matrices)))
+        for i in range(len(cov_matrices)):
+            for j in range(len(cov_matrices)):
+                distances[i, j] = distance_riemann(cov_matrices[i], cov_matrices[j])
+        knn = KNeighborsClassifier(n_neighbors=k, metric='precomputed', weights= 'distance')
+        knn.fit(distances, label)
+        print(knn.score(distances, label))
+        return knn
 
-    def computeCSPFeatures(self, data, target_subject = "voen"):
+    def k_medoids_clustering_test(self, cov_tgt, cov_target, model):
+        distances = np.zeros((len(cov_tgt), len(cov_target)))
+        for i in range(len(cov_tgt)):
+            for j in range(len(cov_target)): 
+                distances[i, j] = distance_riemann(cov_tgt[i], cov_target[j])
+        labels = model.predict(distances) 
+        return labels
+    
+    def log_euclidean_mean(self, matrices):
+        log_matrices = [logm(matrix) for matrix in matrices]
+        mean_log_matrix = np.mean(log_matrices, axis=0)
+        mean_matrix = expm(mean_log_matrix)
+
+        return mean_matrix
+    
+    def ComputeLA(self, Epochs_data, target_subject = 'pipo', calibrate_size = 0.2):
+        label_target = Epochs_data[target_subject]["label"]
+        x_train, x_test, y_train, y_test = train_test_split(Epochs_data[target_subject]['Raw_Epoch'], label_target, test_size=calibrate_size, random_state = 42, stratify=label_target)
+        
+        tgt_test = str(target_subject) + "_test"
+        Epochs_data[tgt_test] = {"Raw_Epoch": x_train}
+        Epochs_data[tgt_test]['label'] = y_train
+
+        Epochs_data[target_subject]["label"] = y_test
+        Epochs_data[target_subject]["Raw_Epoch"] = x_test
+
+        source_left = []
+        source_right = []
+        source_feet = []
+        source_non = []
+
+        for key_subs in Epochs_data:
+            if key_subs != tgt_test and key_subs != target_subject:
+                print("source; ",key_subs)
+                label = Epochs_data[key_subs]["label"]
+                Epochs_data[key_subs]["Raw_left"] = Epochs_data[key_subs]["Raw_Epoch"][np.where(label == 0)]
+                Epochs_data[key_subs]["Raw_right"] = Epochs_data[key_subs]["Raw_Epoch"][np.where(label == 1)]
+                Epochs_data[key_subs]["Raw_non"] = Epochs_data[key_subs]["Raw_Epoch"][np.where(label == 2)]
+                Epochs_data[key_subs]["Raw_feet"] = Epochs_data[key_subs]["Raw_Epoch"][np.where(label == 3)]
+                source_left.append(Epochs_data[key_subs]["Raw_left"])
+                source_right.append(Epochs_data[key_subs]["Raw_right"])
+                source_feet.append(Epochs_data[key_subs]["Raw_feet"])
+                source_non.append(Epochs_data[key_subs]["Raw_non"])
+                    
+            elif key_subs == target_subject:
+                target_cov = []
+                global knn_model
+                global csp
+                print("target; ",target_subject)
+                label = Epochs_data[key_subs]["label"]
+                Epochs_data[key_subs]["Raw_left"] = Epochs_data[key_subs]["Raw_Epoch"][np.where(label == 0)]
+                Epochs_data[key_subs]["Raw_right"] = Epochs_data[key_subs]["Raw_Epoch"][np.where(label == 1)]
+                Epochs_data[key_subs]["Raw_non"] = Epochs_data[key_subs]["Raw_Epoch"][np.where(label == 2)]
+                Epochs_data[key_subs]["Raw_feet"] = Epochs_data[key_subs]["Raw_Epoch"][np.where(label == 3)]
+
+                for trial in Epochs_data[key_subs]["Raw_Epoch"]:
+                    target_cov.append(np.cov(trial))
+                knn_model = self.k_medoids_clustering_train(target_cov, 5, label)
+
+                Ctm_left = np.cov(np.mean(Epochs_data[key_subs]["Raw_left"], axis = 0))
+                Ctm_right = np.cov(np.mean(Epochs_data[key_subs]["Raw_right"], axis = 0))
+                Ctm_feet = np.cov(np.mean(Epochs_data[key_subs]["Raw_feet"], axis = 0))
+                Ctm_non = np.cov(np.mean(Epochs_data[key_subs]["Raw_non"], axis = 0))
+
+                # Ctm_left = []
+                # Ctm_right = [] 
+                # Ctm_feet = []
+                # Ctm_non = []
+
+                # for trial in Epochs_data[key_subs]["Raw_left"]:
+                #     Ctm_left.append(np.cov(trial))
+                # Ctm_left = self.log_euclidean_mean(np.array(Ctm_left))
+
+                # for trial in Epochs_data[key_subs]["Raw_right"]:
+                #     Ctm_right.append(np.cov(trial))
+                # Ctm_right = self.log_euclidean_mean(np.array(Ctm_right))
+
+                # for trial in Epochs_data[key_subs]["Raw_feet"]:
+                #     Ctm_feet.append(np.cov(trial))
+                # Ctm_feet = self.log_euclidean_mean(np.array(Ctm_feet))
+
+                # for trial in Epochs_data[key_subs]["Raw_non"]:
+                #     Ctm_non.append(np.cov(trial))
+                # Ctm_non = self.log_euclidean_mean(np.array(Ctm_non))
+
+
+            elif key_subs == tgt_test:
+                tgt_cov = []
+                for trial in Epochs_data[key_subs]["Raw_Epoch"]:
+                    tgt_cov.append(np.cov(trial))
+                tgt_label = self.k_medoids_clustering_test(tgt_cov, target_cov, knn_model)
+
+
+                Epochs_data[key_subs]["KMediod_label"] = tgt_label
+
+                
+        Csm_left = np.cov(np.mean(np.concatenate(source_left, axis = 0), axis = 0))
+        Csm_right = np.cov(np.mean(np.concatenate(source_right, axis = 0), axis = 0))
+        Csm_feet = np.cov(np.mean(np.concatenate(source_feet, axis = 0), axis = 0))
+        Csm_non = np.cov(np.mean(np.concatenate(source_non, axis = 0), axis = 0))
+
+        # Csm_left_0 = np.concatenate(source_left, axis = 0)
+        # Csm_right_0 = np.concatenate(source_right, axis = 0)
+        # Csm_feet_0 = np.concatenate(source_feet, axis = 0)
+        # Csm_non_0 = np.concatenate(source_non, axis = 0)
+        # Csm_left = []
+        # Csm_right = [] 
+        # Csm_feet = []
+        # Csm_non = []
+        # for trial in Csm_left_0:
+        #     Csm_left.append(np.cov(trial))
+        # Csm_left = self.log_euclidean_mean(np.array(Csm_left))
+        
+        # for trial in Csm_right_0:
+        #     Csm_right.append(np.cov(trial))
+        # Csm_right = self.log_euclidean_mean(np.array(Csm_right))
+
+        # for trial in Csm_feet_0:
+        #     Csm_feet.append(np.cov(trial))
+        # Csm_feet = self.log_euclidean_mean(np.array(Csm_feet))
+
+        # for trial in Csm_non_0:
+        #     Csm_non.append(np.cov(trial))
+        # Csm_non = self.log_euclidean_mean(np.array(Csm_non))
+        
+
+        Am_left = np.dot(np.linalg.cholesky(Ctm_left), np.linalg.inv(np.linalg.cholesky(Csm_left)))
+        Am_right = np.dot(np.linalg.cholesky(Ctm_right), np.linalg.inv(np.linalg.cholesky(Csm_right)))
+        Am_feet = np.dot(np.linalg.cholesky(Ctm_feet), np.linalg.inv(np.linalg.cholesky(Csm_feet)))
+        Am_non = np.dot(np.linalg.cholesky(Ctm_non), np.linalg.inv(np.linalg.cholesky(Csm_non)))
+
+
+        for key_subs in Epochs_data:
+            EA_data = []
+            
+            if key_subs != tgt_test:
+                label = Epochs_data[key_subs]["label"]
+            else:
+                label = Epochs_data[key_subs]["KMediod_label"]
+
+            for i, trial in enumerate(Epochs_data[key_subs]["Raw_Epoch"]):
+                if np.isin(i, np.where(label == 0)):
+                    EA_data.append(Am_left@trial)
+                elif np.isin(i, np.where(label == 1)):
+                    EA_data.append(Am_right@trial)
+                elif np.isin(i, np.where(label == 2)):
+                    EA_data.append(Am_non@trial)
+                elif np.isin(i, np.where(label == 3)):
+                    EA_data.append(Am_feet@trial)
+                    
+
+            Epochs_data[key_subs]['EA_Epoch'] = np.array(EA_data)
+
+
+    def computeCSPFeatures(self, data, target_subject = "pipo_test", target_subject_0 = "pipo"):
 
         train_data = None
         train_label = None
@@ -286,7 +453,9 @@ class BCIFuntions:
                 query = "EA_Epoch"
 
             for sub in data.keys():
-                if sub != target_subject:
+                if sub == target_subject or sub == target_subject_0:
+                    pass
+                else:
                     if train_data is None:
                         train_data = data[sub][query]
                     else:
@@ -310,27 +479,6 @@ class BCIFuntions:
                 else:
                     CSP_Epoch[key_sub]['EA_csp'] = csp.transform(data[key_sub]['EA_Epoch'])
                     CSP_Epoch[key_sub]['EA_csp_label'] = data[key_sub]['label']
-
-
-        # CSP_Epoch = {}
-
-        # for key_sub in data:
-
-        #     CSP_Epoch[key_sub] = {}
-
-        #     label = data[key_sub]['label']
-        #     csp = CSP(n_components= len(self.picks), reg=None, log=None, rank= 'info', transform_into = csp_transform)
-
-        #     train_data_raw, label_raw = shuffle(data[key_sub]['Raw_Epoch'], label, random_state = 0)
-        #     train_data_EA, label_EA = shuffle(data[key_sub]['EA_Epoch'], label, random_state = 0)
-                        
-        #     csp.fit(train_data_raw, label_raw)
-        #     CSP_Epoch[key_sub]['Raw_csp'] = csp.transform(train_data_raw)
-        #     CSP_Epoch[key_sub]['Raw_csp_label'] = label_raw
-
-        #     csp.fit(train_data_EA, label_EA)
-        #     CSP_Epoch[key_sub]['EA_csp'] = csp.transform(train_data_EA)
-        #     CSP_Epoch[key_sub]['EA_csp_label'] = label_EA
 
         return CSP_Epoch
 
@@ -392,7 +540,21 @@ class BCIFuntions:
             ax1.axis('off')
             ax1.axis('tight')
 
-    def classifyCSP_LDA(self, data, target_subjects,condition = "noEA"):
+        y = CSP_Epoch[target_subject]['Raw_csp_label']
+
+        plt.figure(figsize=(8, 6))
+        sns.scatterplot(x=CSP_Epoch[target_subject]['sne'][:, 0], y=CSP_Epoch[target_subject]['sne'][:, 1], hue=y, palette="deep")
+        plt.title("Before EA of " + str(target_subject))
+        plt.show()
+
+        y = CSP_Epoch[target_subject]['EA_csp_label']
+
+        plt.figure(figsize=(8, 6))
+        sns.scatterplot(x=CSP_Epoch[target_subject]['sne_EA'][:, 0], y=CSP_Epoch[target_subject]['sne_EA'][:, 1], hue=y, palette="deep")
+        plt.title("After EA of " + str(target_subject))
+        plt.show()
+
+    def classifyCSP_LDA(self, data, target_subjects, calibrate_data,condition = "noEA"):
 
         train_data = None
         train_label = None
@@ -405,20 +567,21 @@ class BCIFuntions:
             query = "EA_Epoch"
 
         for sub in data.keys():
-            if sub == target_subjects:
-                test_data = data[sub][query]
-                test_label = data[sub]['label']
+            if sub != calibrate_data:
+                if sub == target_subjects:
+                    test_data = data[sub][query]
+                    test_label = data[sub]['label']
 
-            else:
-                if train_data is None:
-                    train_data = data[sub][query]
                 else:
-                    train_data = np.concatenate((train_data, data[sub][query]), axis=0)
+                    if train_data is None:
+                        train_data = data[sub][query]
+                    else:
+                        train_data = np.concatenate((train_data, data[sub][query]), axis=0)
 
-                if train_label is None:
-                    train_label = data[sub]['label']
-                else:
-                    train_label = np.concatenate((train_label, data[sub]['label']), axis=0)
+                    if train_label is None:
+                        train_label = data[sub]['label']
+                    else:
+                        train_label = np.concatenate((train_label, data[sub]['label']), axis=0)
 
         
         csp = CSP(n_components = len(self.picks), reg=None, log=None, rank= 'info')
@@ -477,7 +640,7 @@ class BCIFuntions:
         X_test  = csp.transform(test_data)
 
         param_grid = {
-            'C':  [0.01, 0.1, 1, 10, 100, 1000],
+            'C':  [1],
             'kernel': ['linear', 'rbf', 'poly']
         }
         
