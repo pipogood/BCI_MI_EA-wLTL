@@ -7,13 +7,13 @@ from sklearn.metrics import classification_report,confusion_matrix
 from os import listdir
 import random
 import pickle
-random.seed(42)
 
 class Physionet:
     def __init__(self, selectclass, desired_fz, ch_pick):
         self.allclass = selectclass
         self.fs = desired_fz
         self.picks = ch_pick
+        random.seed(42)
         self.class_name = np.array(["Left", "Right", "Non", "Feet"])
 
     def butter_bandpass(self,lowcut,highcut,fs,order):
@@ -184,6 +184,7 @@ class BCIcompet2a:
         self.allclass = selectclass
         self.fs = desired_fz
         self.picks = ch_pick
+        random.seed(42)
         self.class_name = np.array(["Left", "Right", "Non", "Feet"])
 
     def butter_bandpass(self,lowcut,highcut,fs,order):

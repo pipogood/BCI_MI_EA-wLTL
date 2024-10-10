@@ -378,7 +378,7 @@ class Unicorn:
         }
         
         svm =  SVC(random_state=42)
-        cv_splitter = KFold(n_splits=10, shuffle=True, random_state=42)
+        cv_splitter = KFold(n_splits=2, shuffle=True, random_state=42)
         tuned_clf = GridSearchCV(estimator=svm, param_grid=param_grid,
                          scoring='accuracy', refit='accuracy', cv=cv_splitter)
         
@@ -388,6 +388,7 @@ class Unicorn:
         print(f"Best cross-validation score: {tuned_clf.best_score_:.3f}")
 
         self.GetConfusionMatrix(tuned_clf, X_train, X_test, train_label, test_label)
+
 
     def GetConfusionMatrix(self, models, X_train, X_test, y_train, y_test):
         y_pred = models.predict(X_train)
