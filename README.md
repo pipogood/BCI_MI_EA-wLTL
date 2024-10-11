@@ -12,10 +12,10 @@ This study aims to investigate the possibility of conducting short-time motor im
 I selected EEG channels Fz, C3, Cz, C4, and Pz for transfer learning implementation for all datasets. 
 
 # Inter-dataset Result
-Using Unicorn Hybrid Black dataset only, separated into the source and target domains. In this result, every subject will be selected as the target domain, otherwise the source domain. For the target domain, some trials will be selected as calibration sets in the EA and wLTL approach.  
+The Unicorn Hybrid Black dataset was used, with data separated into source and target domains. In this approach, each subject was selected as the target domain, while the remaining subjects were used as the source domain. For the target domain, a subset of trials was selected as calibration sets for the EA and wLTL methods.
 
 # Across-dataset Result
-Using Physionet and BCI competition IV 2a as the source domain and each participant from the Unicorn Hybrid Black dataset was used as the target domain. For the target domain, some trials will be selected as calibration sets in the EA and wLTL approach.
+The Physionet and BCI Competition IV 2a datasets were used as the source domain, while each participant from the Unicorn Hybrid Black dataset was used as the target domain. Similar to the inter-dataset approach, a subset of trials was selected as calibration sets for the EA and wLTL methods in the target domain.
 
 # Reference 
 1. He, H., & Wu, D. (2020). Transfer Learning for Brain-Computer Interfaces: A Euclidean Space Data Alignment Approach. IEEE Transactions on Biomedical Engineering, 67(2), 399–410. https://doi.org/10.1109/TBME.2019.2913914
