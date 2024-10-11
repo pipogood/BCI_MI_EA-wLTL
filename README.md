@@ -12,9 +12,11 @@ This study aims to investigate the possibility of conducting short-time motor im
 I selected EEG channels Fz, C3, Cz, C4, and Pz for transfer learning implementation for all datasets. 
 
 # Inter-dataset Result
+[UnicornDataAlignment.ipynb]
 The Unicorn Hybrid Black dataset was used, with data separated into source and target domains. In this approach, each subject was selected as the target domain, while the remaining subjects were used as the source domain. For the target domain, a subset of trials was selected as calibration sets for the EA and wLTL methods.
 
 # Across-dataset Result
+[00TF_acrossdataset.ipynb]
 The Physionet and BCI Competition IV 2a datasets were used as the source domain, while each participant from the Unicorn Hybrid Black dataset was used as the target domain. Similar to the inter-dataset approach, a subset of trials was selected as calibration sets for the EA and wLTL methods in the target domain.
 
 # Reference 
