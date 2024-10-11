@@ -25,6 +25,13 @@ The Physionet and BCI Competition IV 2a datasets were used as the source domain,
 ![Project Screenshot](pics/across-dataset.png)
 *note data of S5 is only 80 trials because noisy epoch removal
 
+# Table of F1-score for each class
+Intra-dataset
+![Project Screenshot](pics/table-intra.jpg)
+
+Across-dataset
+![Project Screenshot](pics/table-across.jpg)
+
 # Reference 
 1. He, H., & Wu, D. (2020). Transfer Learning for Brain-Computer Interfaces: A Euclidean Space Data Alignment Approach. IEEE Transactions on Biomedical Engineering, 67(2), 399–410. https://doi.org/10.1109/TBME.2019.2913914
 2. Azab, A. M., Mihaylova, L., Ang, K. K., & Arvaneh, M. (2019). Weighted Transfer Learning for Improving Motor Imagery-Based Brain-Computer Interface. IEEE Transactions on Neural Systems and Rehabilitation Engineering, 27(7), 1352–1359. https://doi.org/10.1109/TNSRE.2019.2923315
