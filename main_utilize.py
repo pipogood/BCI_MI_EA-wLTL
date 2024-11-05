@@ -178,8 +178,7 @@ class Unicorn:
                     Epochs_data[tgt_test]['EA_Epoch'] = np.array(EA_data)
 
 
-    def computeCSPFeatures(self, data, target_subject = "pipo_test", target_subject_0 = "pipo"):
-
+    def computeCSPFeatures(self, data, target_subject = "pipo_test", target_subject_0 = "pipo", transform_into = "average_power"):
         train_data = None
         train_label = None
 
@@ -209,7 +208,7 @@ class Unicorn:
                     else:
                         train_label = np.concatenate((train_label, data[sub]['label']), axis=0)
 
-            csp = CSP(n_components = len(self.picks), reg=None, log=None, rank= 'info')
+            csp = CSP(n_components = len(self.picks), reg=None, log=None, rank= 'info', transform_into = transform_into)
             train_data, train_label = shuffle(train_data, train_label, random_state = 0)
             csp.fit(train_data, train_label)      
             
