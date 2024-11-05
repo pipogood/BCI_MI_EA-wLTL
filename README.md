@@ -1,4 +1,4 @@
-# Motor Imagery Transfer Learning Study (In progress)
+# Motor Imagery Transfer Learning Study (Euclidean Alignment + Weight Logistic Regression-Based Learning)
 
 This study aims to investigate the possibility of conducting short-time motor imagery calibration using transfer learning. Euclidean Alignment (EA)[1] and Weight Logistic Regression-Based Learning (wLTL)[2] will be applied for transfer learning with 4 classes of motor imagery.     
 
@@ -31,6 +31,12 @@ Intra-dataset
 
 Across-dataset
 ![Project Screenshot](pics/table-across.jpg)
+
+# Summarize
+1. Euclidean Alignment (EA) can align data across different subjects and datasets. However, further investigation is needed into approaches for managing outliers or trials that deviate from typical patterns.
+2. **A comparison between my undergraduate thesis (within-subject classification) and the EA+wLTL approach (across-subject and dataset classification) shows no significant improvement in accuracy when using EA+wLTL.**
+
+In future studies, I plan to apply alternative Deepnet architectures to enhance knowledge transfer from the source to the target domain and explore feature selection methods to better capture key features between these domains.
 
 # Reference 
 1. He, H., & Wu, D. (2020). Transfer Learning for Brain-Computer Interfaces: A Euclidean Space Data Alignment Approach. IEEE Transactions on Biomedical Engineering, 67(2), 399–410. https://doi.org/10.1109/TBME.2019.2913914
